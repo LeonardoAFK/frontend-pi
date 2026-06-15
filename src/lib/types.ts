@@ -114,3 +114,32 @@ export interface CreateEventPayload {
   createdByUserName?: string;
 }
 export type EventItem = EventResponse;
+
+export interface EventParticipantPayload {
+  eventId: number;
+  cancellationReason?: string;
+}
+
+export interface EventParticipantPayload {
+  eventId: number;
+  cancellationReason?: string;
+}
+
+export interface ApproveOrRejectParticipantPayload {
+  eventId: number;
+  userId: string;
+  approve: boolean;
+}
+
+export interface EventParticipantResponse {
+  id?: number;
+  eventId?: number;
+  userId?: string;
+  userName?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  status?: string;
+  isApproved?: boolean;
+  createDate?: string;
+}

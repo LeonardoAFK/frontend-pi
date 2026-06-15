@@ -1,6 +1,9 @@
 import type {
+  ApproveOrRejectParticipantPayload,
   CreateEventPayload,
   EventFilter,
+  EventParticipantPayload,
+  EventParticipantResponse,
   EventResponse,
   LoginPayload,
   ReactionSummary,
@@ -244,6 +247,87 @@ export const api = {
       }
     );
   },
+
+  
+
+
+    registerToEvent: async (eventId: number) => {
+    const token = getToken();
+
+    const payload: EventParticipantPayload = {
+      eventId,
+      cancellationReason: "",
+    };
+
+    return apiFetch<string>(routes.registerToEvent, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  cancelRegistration: async (
+    eventId: number,
+    cancellationReason = "Cancelado por el usuario"
+  ) => {
+    const token = getToken();
+
+    const payload: EventParticipantPayload = {
+      eventId,
+      cancellationReason,
+    };
+
+    return apiFetch<string>(routes.cancelRegistration, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getParticipantsByEventId: async (eventId: number) => {
+    const token = getToken();
+
+    const url = `${routes.getParticipantsByEventId}?eventId=${eventId}`;
+
+    return apiFetch<EventParticipantResponse[]>(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  },
+
+  getPendingRequests: async (eventId: number) => {
+    const token = getToken();
+
+    const url = `${routes.getPendingRequests}?eventId=${eventId}`;
+
+    return apiFetch<EventParticipantResponse[]>(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  },
+
+  approveOrRejectParticipant: async (
+    payload: ApproveOrRejectParticipantPayload
+  ) => {
+    const token = getToken();
+
+    return apiFetch<string>(routes.approveOrRejectParticipant, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  },
+
 
   reactToEvent: async (eventId: number, reactionTypeId: ReactionType) => {
     const token = getToken();
