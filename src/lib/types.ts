@@ -113,3 +113,4 @@ export interface CreateEventPayload {
   imageUrl?: string | null;
   createdByUserName?: string;
 }
+export type EventItem = EventResponse;
