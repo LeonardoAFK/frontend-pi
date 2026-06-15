@@ -5,14 +5,15 @@ import maplibregl, {
   type MapMouseEvent,
   type StyleSpecification,
 } from "maplibre-gl";
-import { useEffect, useRef } from "react";
-
+import { useEffect, useMemo, useRef } from "react";
 
 interface Props {
   events: EventItem[];
   onSelect?: (event: EventItem) => void;
   onMapClick?: (coords: { lat: number; lng: number }) => void;
   pickedLocation?: { lat: number; lng: number } | null;
+  selectedEventId?: number | null;
+  registeredEventIds?: number[];
 }
 
 const mapStyle: StyleSpecification = {
@@ -34,16 +35,35 @@ const mapStyle: StyleSpecification = {
   ],
 };
 
+function getMarkerColor({
+  isSelected,
+  isRegistered,
+}: {
+  isSelected: boolean;
+  isRegistered: boolean;
+}) {
+  if (isSelected) return "#9333ea"; // Morado
+  if (isRegistered) return "#2563eb"; // Azul
+  return "#22a06b"; // Verde
+}
+
 export function EventMap({
   events,
   onSelect,
   onMapClick,
   pickedLocation,
+  selectedEventId,
+  registeredEventIds = [],
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
   const pickedMarkerRef = useRef<maplibregl.Marker | null>(null);
+
+  const registeredIdsSet = useMemo(
+    () => new Set(registeredEventIds),
+    [registeredEventIds]
+  );
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -89,11 +109,25 @@ export function EventMap({
     markersRef.current = [];
 
     events.forEach((event) => {
-      const el = document.createElement("button");
-      el.className = "h-4 w-4 rounded-full border-2 border-white bg-red-500";
-      el.title = event.name;
+      const isSelected = selectedEventId === event.id;
+      const isRegistered = registeredIdsSet.has(event.id);
+      const color = getMarkerColor({ isSelected, isRegistered });
 
-      el.addEventListener("click", () => onSelect?.(event));
+      const el = document.createElement("button");
+      el.type = "button";
+      el.title = event.name;
+      el.style.backgroundColor = color;
+      el.className =
+        "h-5 w-5 rounded-full border-[3px] border-white shadow-lg shadow-slate-900/30 transition-transform hover:scale-125";
+
+      if (isSelected) {
+        el.className += " ring-4 ring-purple-200";
+      }
+
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onSelect?.(event);
+      });
 
       const marker = new maplibregl.Marker({ element: el })
         .setLngLat([event.longitude, event.latitude])
@@ -101,7 +135,7 @@ export function EventMap({
 
       markersRef.current.push(marker);
     });
-  }, [events, onSelect]);
+  }, [events, onSelect, selectedEventId, registeredIdsSet]);
 
   useEffect(() => {
     const map = mapRef.current;

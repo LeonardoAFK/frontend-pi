@@ -1,6 +1,8 @@
 "use client";
 
 import { EventMap } from "@/components/map/event-map";
+import { MapFilters, type MapFilterMode } from "@/components/map/map-filters";
+import { MapLegend } from "@/components/map/map-legend";
 import { api, getToken } from "@/lib/api";
 import {
   getCategoryLabel,
@@ -10,13 +12,15 @@ import {
 } from "@/lib/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function MapPage() {
   const [selectedEvent, setSelectedEvent] = useState<EventResponse | null>(null);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionError, setReactionError] = useState("");
   const [token, setTokenState] = useState<string | null>(null);
+  const [filterMode, setFilterMode] = useState<MapFilterMode>("all");
+  const [selectedCategory, setSelectedCategory] = useState<number | "">("");
 
   const queryClient = useQueryClient();
 
@@ -34,6 +38,50 @@ export default function MapPage() {
     queryFn: () => api.getEvents(),
     enabled: !!token,
   });
+
+  const { data: registeredEvents = [] } = useQuery({
+    queryKey: ["my-registered-events", token],
+    queryFn: () => api.getMyRegisteredEvents(),
+    enabled: !!token,
+    retry: false,
+  });
+
+  const registeredEventIds = useMemo(
+    () => registeredEvents.map((event) => event.id),
+    [registeredEvents]
+  );
+
+  const visibleEvents = useMemo(() => {
+    if (filterMode === "registered") {
+      return events.filter((event) => registeredEventIds.includes(event.id));
+    }
+
+    if (filterMode === "category" && selectedCategory !== "") {
+      return events.filter((event) => event.category === selectedCategory);
+    }
+
+    return events;
+  }, [events, filterMode, registeredEventIds, selectedCategory]);
+
+  useEffect(() => {
+    if (!selectedEvent) return;
+
+    const selectedStillVisible = visibleEvents.some(
+      (event) => event.id === selectedEvent.id
+    );
+
+    if (!selectedStillVisible) {
+      setSelectedEvent(null);
+    }
+  }, [selectedEvent, visibleEvents]);
+
+  function handleFilterModeChange(mode: MapFilterMode) {
+    setFilterMode(mode);
+
+    if (mode !== "category") {
+      setSelectedCategory("");
+    }
+  }
 
   async function handleReaction(reactionType: ReactionType) {
     if (!selectedEvent) return;
@@ -99,7 +147,25 @@ export default function MapPage() {
           </p>
         )}
 
-        <EventMap events={token ? events : []} onSelect={setSelectedEvent} />
+        {token && (
+          <div className="mb-4 grid gap-4 md:grid-cols-[220px_1fr]">
+            <MapLegend />
+
+            <MapFilters
+              mode={filterMode}
+              category={selectedCategory}
+              onModeChange={handleFilterModeChange}
+              onCategoryChange={setSelectedCategory}
+            />
+          </div>
+        )}
+
+        <EventMap
+          events={token ? visibleEvents : []}
+          onSelect={setSelectedEvent}
+          selectedEventId={selectedEvent?.id}
+          registeredEventIds={registeredEventIds}
+        />
       </div>
 
       <aside className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -149,7 +215,9 @@ export default function MapPage() {
                       isActive
                         ? "border-blue-600 bg-blue-50 text-blue-700"
                         : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                    } ${reactionLoading ? "cursor-not-allowed opacity-70" : ""}`}
+                    } ${
+                      reactionLoading ? "cursor-not-allowed opacity-70" : ""
+                    }`}
                     title={reaction.label}
                   >
                     <span>{reaction.emoji}</span>
