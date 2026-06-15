@@ -12,25 +12,32 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5160";
 
 export const routes = {
   // Usuario
-  login: `${API_URL}/Login`,
-  register: `${API_URL}/Register`,
-  me: `${API_URL}/GetUserAuthenticated`,
-  changePassword: `${API_URL}/ChangePassword`,
-  uploadProfileImage: `${API_URL}/UploadImageProfileAsync`,
+  login: `${API_URL}/User/Login`,
+  register: `${API_URL}/User/Register`,
+  me: `${API_URL}/User/GetUserAuthenticated`,
+  changePassword: `${API_URL}/User/ChangePassword`,
+  uploadProfileImage: `${API_URL}/User/UploadImageProfileAsync`,
 
   // Eventos
-  getEvents: `${API_URL}/api/Event/GetEvents`,
-  getMyRegisteredEvents: `${API_URL}/api/Event/GetEventsIAmRegistered`,
-  createEvent: `${API_URL}/api/Event/Create`,
-  updateEvent: `${API_URL}/api/Event/Update`,
-  deleteEvent: (id: number) => `${API_URL}/api/Event/Delete/${id}`,
-  uploadEventImage: `${API_URL}/api/Event/UploadImageAsync`,
+  getEvents: `${API_URL}/Event/GetEvents`,
+  getMyRegisteredEvents: `${API_URL}/Event/GetEventsIAmRegistered`,
+  createEvent: `${API_URL}/Event/Create`,
+  updateEvent: `${API_URL}/Event/Update`,
+  deleteEvent: (id: number) => `${API_URL}/Event/Delete/${id}`,
+  uploadEventImage: `${API_URL}/Event/UploadImageAsync`,
+
+  // Participantes
+  registerToEvent: `${API_URL}/EventParticipant/RegisterToEvent`,
+  cancelRegistration: `${API_URL}/EventParticipant/CancelRegistration`,
+  approveOrRejectParticipant: `${API_URL}/EventParticipant/ApproveOrRejectParticipant`,
+  getParticipantsByEventId: `${API_URL}/EventParticipant/GetParticipantsByEventId`,
+  getPendingRequests: `${API_URL}/EventParticipant/GetPendingRequestsAsync`,
 
   // Reacciones
-  reactToEvent: `${API_URL}/api/Reaction/ReactToEvent`,
-  getReactionsByEventId: `${API_URL}/api/Reaction/GetReactionsByEventId`,
+  reactToEvent: `${API_URL}/Reaction/ReactToEvent`,
+  getReactionsByEventId: `${API_URL}/Reaction/GetReactionsByEventId`,
   deleteReaction: (eventId: number) =>
-    `${API_URL}/api/Reaction/Delete/${eventId}`,
+    `${API_URL}/Reaction/Delete/${eventId}`,
 };
 
 export function getToken() {
