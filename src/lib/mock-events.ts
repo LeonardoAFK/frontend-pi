@@ -1,0 +1,36 @@
+import type { EventItem } from "@/lib/types";
+
+export const MOCK_EVENTS: EventItem[] = [
+  {
+    id: 1,
+    name: "Freestyle en la U",
+    description: "Competencia de rap improvisado abierta para estudiantes.",
+    startDate: "2026-04-20T17:00:00",
+    endDate: "2026-04-20T20:00:00",
+    latitude: 6.2679,
+    longitude: -75.5681,
+    address: "Universidad de Antioquia, Medellín",
+    maxParticipants: 50,
+    isPublic: true,
+    category: "Musica",
+    price: 0,
+    imageUrl: null,
+    createdByUserName: "demo_user",
+  },
+  {
+    id: 2,
+    name: "Torneo Indie de Smash",
+    description: "Evento casual para gamers de la ciudad.",
+    startDate: "2026-04-22T14:00:00",
+    endDate: "2026-04-22T19:00:00",
+    latitude: 6.2442,
+    longitude: -75.5812,
+    address: "Laureles, Medellín",
+    maxParticipants: 32,
+    isPublic: true,
+    category: "Videojuegos",
+    price: 10000,
+    imageUrl: null,
+    createdByUserName: "nate",
+  },
+];
