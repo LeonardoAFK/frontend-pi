@@ -5,8 +5,10 @@ import { MapFilters, type MapFilterMode } from "@/components/map/map-filters";
 import { MapLegend } from "@/components/map/map-legend";
 import { api, getToken } from "@/lib/api";
 import {
+  CATEGORY_OPTIONS,
   getCategoryLabel,
   REACTION_OPTIONS,
+  type CreateEventPayload,
   type EventResponse,
   type ReactionType,
 } from "@/lib/types";
@@ -54,8 +56,53 @@ function getStringClaim(payload: JwtPayload | null, keys: string[]) {
   return "";
 }
 
+function collectStringValues(value: unknown): string[] {
+  if (!value) return [];
+
+  if (typeof value === "string") {
+    return [normalizeText(value)].filter(Boolean);
+  }
+
+  if (typeof value === "number") {
+    return [String(value)];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap(collectStringValues);
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).flatMap(
+      collectStringValues
+    );
+  }
+
+  return [];
+}
+
+function toDateTimeInput(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function fromDateTimeInput(value: string) {
+  return new Date(value).toISOString();
+}
+
 export default function MapPage() {
   const [selectedEvent, setSelectedEvent] = useState<EventResponse | null>(null);
+
+  const [isEditingEvent, setIsEditingEvent] = useState(false);
+  const [eventActionLoading, setEventActionLoading] = useState(false);
+  const [eventActionError, setEventActionError] = useState("");
+  const [eventActionMessage, setEventActionMessage] = useState("");
+  const [editForm, setEditForm] = useState<CreateEventPayload | null>(null);
 
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionError, setReactionError] = useState("");
@@ -169,25 +216,18 @@ export default function MapPage() {
     const eventCreatorId = normalizeText(selectedEvent.createdByUserId);
     const eventCreatorName = normalizeText(selectedEvent.createdByUserName);
 
-    const currentUserId = normalizeText(currentUserIdFromToken);
+    const possibleCurrentUserValues = new Set([
+      ...collectStringValues(currentUser),
+      ...collectStringValues(tokenPayload),
+      normalizeText(currentUserIdFromToken),
+      normalizeText(currentUserNameFromToken),
+    ]);
 
-    const possibleCurrentUserNames = [
-      currentUserNameFromToken,
-      currentUser?.userName,
-      currentUser?.email,
-      currentUser?.message,
-    ]
-      .map(normalizeText)
-      .filter(Boolean);
-
-    if (eventCreatorId && currentUserId && eventCreatorId === currentUserId) {
+    if (eventCreatorId && possibleCurrentUserValues.has(eventCreatorId)) {
       return true;
     }
 
-    if (
-      eventCreatorName &&
-      possibleCurrentUserNames.some((name) => name === eventCreatorName)
-    ) {
+    if (eventCreatorName && possibleCurrentUserValues.has(eventCreatorName)) {
       return true;
     }
 
@@ -195,6 +235,7 @@ export default function MapPage() {
   }, [
     selectedEvent,
     currentUser,
+    tokenPayload,
     currentUserIdFromToken,
     currentUserNameFromToken,
   ]);
@@ -325,6 +366,115 @@ export default function MapPage() {
       );
     } finally {
       setReactionLoading(false);
+    }
+  }
+
+  function openEditEvent() {
+    if (!selectedEvent) return;
+
+    setEventActionError("");
+    setEventActionMessage("");
+
+    setEditForm({
+      id: selectedEvent.id,
+      name: selectedEvent.name,
+      description: selectedEvent.description,
+      startDate: toDateTimeInput(selectedEvent.startDate),
+      endDate: toDateTimeInput(selectedEvent.endDate),
+      latitude: selectedEvent.latitude,
+      longitude: selectedEvent.longitude,
+      address: selectedEvent.address,
+      maxParticipants: selectedEvent.maxParticipants,
+      isPublic: selectedEvent.isPublic,
+      category: selectedEvent.category,
+      price: selectedEvent.price ?? 0,
+      imageUrl: selectedEvent.imageUrl ?? null,
+    });
+
+    setIsEditingEvent(true);
+  }
+
+  function updateEditForm<K extends keyof CreateEventPayload>(
+    key: K,
+    value: CreateEventPayload[K]
+  ) {
+    setEditForm((current) => {
+      if (!current) return current;
+
+      return {
+        ...current,
+        [key]: value,
+      };
+    });
+  }
+
+  async function handleUpdateEvent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editForm || !selectedEventIsOwner) return;
+
+    setEventActionLoading(true);
+    setEventActionError("");
+    setEventActionMessage("");
+
+    try {
+      const payload: CreateEventPayload = {
+        ...editForm,
+        startDate: fromDateTimeInput(editForm.startDate),
+        endDate: fromDateTimeInput(editForm.endDate),
+        maxParticipants: Number(editForm.maxParticipants),
+        price: Number(editForm.price ?? 0),
+        category: Number(editForm.category),
+        latitude: Number(editForm.latitude),
+        longitude: Number(editForm.longitude),
+      };
+
+      const updatedEvent = await api.updateEvent(payload);
+
+      setSelectedEvent(updatedEvent);
+      setIsEditingEvent(false);
+      setEditForm(null);
+      setEventActionMessage("Evento actualizado correctamente.");
+
+      await queryClient.invalidateQueries({ queryKey: ["events"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-events"] });
+    } catch (err) {
+      setEventActionError(
+        err instanceof Error ? err.message : "No se pudo actualizar el evento"
+      );
+    } finally {
+      setEventActionLoading(false);
+    }
+  }
+
+  async function handleDeleteEvent() {
+    if (!selectedEvent || !selectedEventIsOwner) return;
+
+    const confirmed = window.confirm(
+      `¿Seguro que deseas eliminar el evento "${selectedEvent.name}"?`
+    );
+
+    if (!confirmed) return;
+
+    setEventActionLoading(true);
+    setEventActionError("");
+    setEventActionMessage("");
+
+    try {
+      await api.deleteEvent(selectedEvent.id);
+
+      setSelectedEvent(null);
+      setEventActionMessage("Evento eliminado correctamente.");
+
+      await queryClient.invalidateQueries({ queryKey: ["events"] });
+      await queryClient.invalidateQueries({ queryKey: ["registered-events"] });
+      await queryClient.invalidateQueries({ queryKey: ["dashboard-events"] });
+    } catch (err) {
+      setEventActionError(
+        err instanceof Error ? err.message : "No se pudo eliminar el evento"
+      );
+    } finally {
+      setEventActionLoading(false);
     }
   }
 
@@ -480,7 +630,7 @@ export default function MapPage() {
               </p>
 
               {selectedEventIsOwner ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p className="rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
                     Este evento fue creado por ti.
                   </p>
@@ -488,28 +638,196 @@ export default function MapPage() {
                   <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
-                      disabled
-                      className="rounded-xl bg-[#4668A9] px-4 py-2 text-sm font-semibold text-white opacity-80"
+                      onClick={openEditEvent}
+                      disabled={eventActionLoading}
+                      className="rounded-xl bg-[#4668A9] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#38578F] disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       Modificar
                     </button>
 
                     <button
                       type="button"
-                      disabled
-                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white opacity-80"
+                      onClick={handleDeleteEvent}
+                      disabled={eventActionLoading}
+                      className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
                     >
-                      Ver inscritos
+                      Eliminar evento
                     </button>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled
-                    className="w-full rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 opacity-80"
-                  >
-                    Eliminar evento
-                  </button>
+                  {eventActionError && (
+                    <p className="text-sm font-medium text-red-600">
+                      {eventActionError}
+                    </p>
+                  )}
+
+                  {eventActionMessage && (
+                    <p className="text-sm font-medium text-emerald-600">
+                      {eventActionMessage}
+                    </p>
+                  )}
+
+                  {isEditingEvent && editForm && (
+                    <form
+                      onSubmit={handleUpdateEvent}
+                      className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-slate-600">
+                          Nombre
+                        </label>
+                        <input
+                          value={editForm.name}
+                          onChange={(event) => updateEditForm("name", event.target.value)}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-slate-600">
+                          Categoría
+                        </label>
+                        <select
+                          value={editForm.category}
+                          onChange={(event) =>
+                            updateEditForm("category", Number(event.target.value))
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                        >
+                          {CATEGORY_OPTIONS.map((category) => (
+                            <option key={category.value} value={category.value}>
+                              {category.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-slate-600">
+                          Descripción
+                        </label>
+                        <textarea
+                          value={editForm.description}
+                          onChange={(event) =>
+                            updateEditForm("description", event.target.value)
+                          }
+                          className="min-h-24 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-xs font-bold text-slate-600">
+                          Dirección
+                        </label>
+                        <input
+                          value={editForm.address}
+                          onChange={(event) => updateEditForm("address", event.target.value)}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                          required
+                        />
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-bold text-slate-600">
+                            Inicio
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={editForm.startDate}
+                            onChange={(event) =>
+                              updateEditForm("startDate", event.target.value)
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-bold text-slate-600">
+                            Fin
+                          </label>
+                          <input
+                            type="datetime-local"
+                            value={editForm.endDate}
+                            onChange={(event) =>
+                              updateEditForm("endDate", event.target.value)
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-bold text-slate-600">
+                            Cupo
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={editForm.maxParticipants}
+                            onChange={(event) =>
+                              updateEditForm("maxParticipants", Number(event.target.value))
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="mb-1 block text-xs font-bold text-slate-600">
+                            Precio
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editForm.price ?? 0}
+                            onChange={(event) =>
+                              updateEditForm("price", Number(event.target.value))
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#4668A9]"
+                          />
+                        </div>
+                      </div>
+
+                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={editForm.isPublic}
+                          onChange={(event) =>
+                            updateEditForm("isPublic", event.target.checked)
+                          }
+                        />
+                        Evento público
+                      </label>
+
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={eventActionLoading}
+                          className="flex-1 rounded-xl bg-[#4668A9] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#38578F] disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {eventActionLoading ? "Guardando..." : "Guardar cambios"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingEvent(false);
+                            setEditForm(null);
+                          }}
+                          disabled={eventActionLoading}
+                          className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               ) : selectedEventIsRegistered ? (
                 <button
@@ -518,9 +836,7 @@ export default function MapPage() {
                   disabled={participantLoading}
                   className="w-full rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {participantLoading
-                    ? "Procesando..."
-                    : "Cancelar inscripción"}
+                  {participantLoading ? "Procesando..." : "Cancelar inscripción"}
                 </button>
               ) : (
                 <button
@@ -531,18 +847,6 @@ export default function MapPage() {
                 >
                   {participantLoading ? "Procesando..." : "Inscribirme"}
                 </button>
-              )}
-
-              {participantMessage && (
-                <p className="mt-2 text-sm font-medium text-emerald-700">
-                  {participantMessage}
-                </p>
-              )}
-
-              {participantError && (
-                <p className="mt-2 text-sm font-medium text-red-600">
-                  {participantError}
-                </p>
               )}
             </div>
           </div>
