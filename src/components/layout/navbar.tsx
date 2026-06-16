@@ -75,7 +75,7 @@ export function Navbar() {
 
               <Link
                 href="/register"
-                className="whitespace-nowrap rounded-full bg-slate-950 px-3 py-2 font-medium text-white shadow-sm hover:bg-slate-800"
+                className="whitespace-nowrap rounded-full px-3 py-2 font-medium !text-white shadow-sm hover:bg-slate-800"
               >
                 Registro
               </Link>

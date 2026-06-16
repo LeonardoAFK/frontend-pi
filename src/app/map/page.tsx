@@ -18,7 +18,15 @@ import { useEffect, useMemo, useState } from "react";
 
 
 function normalizeText(value: unknown) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/^username\s*=\s*/i, "")
+    .replace(/^userName\s*=\s*/i, "")
+    .replace(/^name\s*=\s*/i, "")
+    .replace(/^email\s*=\s*/i, "")
+    .trim()
+    .toLowerCase();
 }
 
 type JwtPayload = Record<string, unknown>;
@@ -621,6 +629,9 @@ export default function MapPage() {
               <p>
                 <strong>Creador:</strong>{" "}
                 {selectedEvent.createdByUserName || "Sin dato"}
+              </p>
+              <p className="text-xs text-slate-400">
+                Owner detectado: {selectedEventIsOwner ? "sí" : "no"}
               </p>
             </div>
 
