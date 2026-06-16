@@ -113,23 +113,34 @@ export function EventMap({
       const isRegistered = registeredIdsSet.has(event.id);
       const color = getMarkerColor({ isSelected, isRegistered });
 
-      const el = document.createElement("button");
-      el.type = "button";
-      el.title = event.name;
-      el.style.backgroundColor = color;
-      el.className =
-        "h-5 w-5 rounded-full border-[3px] border-white shadow-lg shadow-slate-900/30 transition-transform hover:scale-125";
+      const markerWrapper = document.createElement("div");
+      markerWrapper.className =
+        "flex h-8 w-8 items-center justify-center rounded-full";
+
+      const markerButton = document.createElement("button");
+      markerButton.type = "button";
+      markerButton.title = event.name;
+      markerButton.style.backgroundColor = color;
+      markerButton.className =
+        "h-5 w-5 rounded-full border-[3px] border-white shadow-lg shadow-slate-900/30 transition hover:h-6 hover:w-6";
 
       if (isSelected) {
-        el.className += " ring-4 ring-purple-200";
+        markerWrapper.className += " bg-purple-200/80";
+        markerButton.className += " h-6 w-6";
       }
 
-      el.addEventListener("click", (e) => {
+      markerButton.addEventListener("click", (e) => {
+        e.preventDefault();
         e.stopPropagation();
         onSelect?.(event);
       });
 
-      const marker = new maplibregl.Marker({ element: el })
+      markerWrapper.appendChild(markerButton);
+
+      const marker = new maplibregl.Marker({
+        element: markerWrapper,
+        anchor: "center",
+      })
         .setLngLat([event.longitude, event.latitude])
         .addTo(map);
 
