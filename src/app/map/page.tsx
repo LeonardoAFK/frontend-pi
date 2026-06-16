@@ -159,6 +159,10 @@ export default function MapPage() {
     return Array.from(ids);
   }, [registeredEventIds, registrationOverrides]);
 
+  const selectedEventIsRegistered = selectedEvent
+    ? effectiveRegisteredEventIds.includes(selectedEvent.id)
+    : false;
+
   const selectedEventIsOwner = useMemo(() => {
     if (!selectedEvent) return false;
 
