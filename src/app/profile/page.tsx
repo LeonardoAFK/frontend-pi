@@ -28,6 +28,45 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
+type JwtPayload = Record<string, unknown>;
+
+function decodeJwtPayload(token: string | null): JwtPayload | null {
+  if (!token) return null;
+
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "="
+    );
+
+    return JSON.parse(atob(padded)) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+function getStringClaim(payload: JwtPayload | null, keys: string[]) {
+  if (!payload) return "";
+
+  for (const key of keys) {
+    const value = payload[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function firstValue(...values: Array<string | null | undefined>) {
+  return values.find((value) => value && value.trim())?.trim() || "";
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -60,22 +99,67 @@ export default function ProfilePage() {
     retry: false,
   });
 
+  const tokenPayload = useMemo(() => decodeJwtPayload(token), [token]);
+
+  const tokenUserName = useMemo(
+    () =>
+      getStringClaim(tokenPayload, [
+        "unique_name",
+        "userName",
+        "UserName",
+        "name",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+      ]),
+    [tokenPayload]
+  );
+
+  const tokenEmail = useMemo(
+    () =>
+      getStringClaim(tokenPayload, [
+        "email",
+        "Email",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+      ]),
+    [tokenPayload]
+  );
+
+  const tokenFirstName = useMemo(
+    () =>
+      getStringClaim(tokenPayload, [
+        "firstName",
+        "FirstName",
+        "given_name",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname",
+      ]),
+    [tokenPayload]
+  );
+
+  const tokenLastName = useMemo(
+    () =>
+      getStringClaim(tokenPayload, [
+        "lastName",
+        "LastName",
+        "family_name",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname",
+      ]),
+    [tokenPayload]
+  );
+
+  const firstName = firstValue(user?.firstName, tokenFirstName);
+  const lastName = firstValue(user?.lastName, tokenLastName);
+  const email = firstValue(user?.email, tokenEmail);
+
+  const userName = firstValue(
+    cleanUserName(user?.userName),
+    cleanUserName(user?.message),
+    cleanUserName(tokenUserName)
+  );
+
   const displayName = useMemo(() => {
-    const fullName = [user?.firstName, user?.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
+    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
 
-    return (
-      fullName ||
-      cleanUserName(user?.userName) ||
-      cleanUserName(user?.message) ||
-      user?.email ||
-      "Usuario"
-    );
-  }, [user]);
-
-  const userName = cleanUserName(user?.userName || user?.message);
+    return fullName || userName || email || "Usuario";
+  }, [firstName, lastName, userName, email]);
 
   const uploadImageMutation = useMutation({
     mutationFn: (file: File) => api.uploadProfileImage(file),
@@ -250,7 +334,7 @@ export default function ProfilePage() {
                     Correo
                   </p>
                   <p className="mt-1 font-semibold text-slate-950">
-                    {user?.email || "Sin dato"}
+                    {email || "Sin dato"}
                   </p>
                 </div>
 
@@ -259,7 +343,7 @@ export default function ProfilePage() {
                     Nombre
                   </p>
                   <p className="mt-1 font-semibold text-slate-950">
-                    {user?.firstName || "Sin dato"}
+                    {firstName || "Sin dato"}
                   </p>
                 </div>
 
@@ -268,7 +352,7 @@ export default function ProfilePage() {
                     Apellido
                   </p>
                   <p className="mt-1 font-semibold text-slate-950">
-                    {user?.lastName || "Sin dato"}
+                    {lastName || "Sin dato"}
                   </p>
                 </div>
               </div>
