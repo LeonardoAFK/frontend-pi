@@ -14,8 +14,44 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+type JwtPayload = Record<string, unknown>;
+
+function decodeJwtPayload(token: string | null): JwtPayload | null {
+  if (!token) return null;
+
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "="
+    );
+
+    return JSON.parse(atob(padded)) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+function getStringClaim(payload: JwtPayload | null, keys: string[]) {
+  if (!payload) return "";
+
+  for (const key of keys) {
+    const value = payload[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
 }
 
 export default function MapPage() {
@@ -48,6 +84,35 @@ export default function MapPage() {
     enabled: !!token,
     retry: false,
   });
+
+  const tokenPayload = useMemo(() => decodeJwtPayload(token), [token]);
+
+  const currentUserIdFromToken = useMemo(
+    () =>
+      getStringClaim(tokenPayload, [
+        "nameid",
+        "sub",
+        "userId",
+        "UserId",
+        "id",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+      ]),
+    [tokenPayload]
+  );
+
+  const currentUserNameFromToken = useMemo(
+    () =>
+      getStringClaim(tokenPayload, [
+        "unique_name",
+        "name",
+        "userName",
+        "UserName",
+        "email",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+      ]),
+    [tokenPayload]
+  );
 
   const {
     data: eventsData = [],
@@ -94,27 +159,41 @@ export default function MapPage() {
     return Array.from(ids);
   }, [registeredEventIds, registrationOverrides]);
 
-  const selectedEventIsRegistered = selectedEvent
-    ? effectiveRegisteredEventIds.includes(selectedEvent.id)
-    : false;
-
   const selectedEventIsOwner = useMemo(() => {
-    if (!selectedEvent || !currentUser) return false;
+    if (!selectedEvent) return false;
 
+    const eventCreatorId = normalizeText(selectedEvent.createdByUserId);
     const eventCreatorName = normalizeText(selectedEvent.createdByUserName);
-    const currentUserName = normalizeText(currentUser.userName);
-    const currentUserMessage = normalizeText(currentUser.message);
 
-    if (currentUserName && eventCreatorName === currentUserName) {
+    const currentUserId = normalizeText(currentUserIdFromToken);
+
+    const possibleCurrentUserNames = [
+      currentUserNameFromToken,
+      currentUser?.userName,
+      currentUser?.email,
+      currentUser?.message,
+    ]
+      .map(normalizeText)
+      .filter(Boolean);
+
+    if (eventCreatorId && currentUserId && eventCreatorId === currentUserId) {
       return true;
     }
 
-    if (currentUserMessage && eventCreatorName === currentUserMessage) {
+    if (
+      eventCreatorName &&
+      possibleCurrentUserNames.some((name) => name === eventCreatorName)
+    ) {
       return true;
     }
 
     return false;
-  }, [selectedEvent, currentUser]);
+  }, [
+    selectedEvent,
+    currentUser,
+    currentUserIdFromToken,
+    currentUserNameFromToken,
+  ]);
 
   const visibleEvents = useMemo(() => {
     if (filterMode === "registered") {
