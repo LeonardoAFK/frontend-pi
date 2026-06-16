@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 
 export default function MapPage() {
   const [selectedEvent, setSelectedEvent] = useState<EventResponse | null>(null);
+
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionError, setReactionError] = useState("");
 
@@ -34,7 +35,7 @@ export default function MapPage() {
   }, []);
 
   const {
-    data: events = [],
+    data: eventsData = [],
     isLoading,
     isError,
     error,
@@ -44,12 +45,18 @@ export default function MapPage() {
     enabled: !!token,
   });
 
-  const { data: registeredEvents = [] } = useQuery({
+  const events = Array.isArray(eventsData) ? eventsData : [];
+
+  const { data: registeredEventsData = [] } = useQuery({
     queryKey: ["my-registered-events", token],
     queryFn: () => api.getMyRegisteredEvents(),
     enabled: !!token,
     retry: false,
   });
+
+  const registeredEvents = Array.isArray(registeredEventsData)
+    ? registeredEventsData
+    : [];
 
   const registeredEventIds = useMemo(
     () => registeredEvents.map((event) => event.id),
@@ -84,6 +91,16 @@ export default function MapPage() {
     }
   }, [selectedEvent, visibleEvents]);
 
+  useEffect(() => {
+    if (!selectedEvent) return;
+
+    const updatedSelected = events.find((event) => event.id === selectedEvent.id);
+
+    if (updatedSelected) {
+      setSelectedEvent(updatedSelected);
+    }
+  }, [events, selectedEvent?.id]);
+
   function handleFilterModeChange(mode: MapFilterMode) {
     setFilterMode(mode);
 
@@ -92,25 +109,11 @@ export default function MapPage() {
     }
   }
 
-  async function refreshSelectedEvent(eventId: number) {
-    await queryClient.invalidateQueries({ queryKey: ["events"] });
-    await queryClient.invalidateQueries({ queryKey: ["my-registered-events"] });
-
-    const updatedEvents = await queryClient.fetchQuery({
-      queryKey: ["events", token],
-      queryFn: () => api.getEvents(),
-    });
-
-    await queryClient.fetchQuery({
-      queryKey: ["my-registered-events", token],
-      queryFn: () => api.getMyRegisteredEvents(),
-    });
-
-    const updatedSelected = updatedEvents.find((event) => event.id === eventId);
-
-    if (updatedSelected) {
-      setSelectedEvent(updatedSelected);
-    }
+  async function refreshEventLists() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["events"] }),
+      queryClient.invalidateQueries({ queryKey: ["my-registered-events"] }),
+    ]);
   }
 
   async function handleRegisterToEvent() {
@@ -125,7 +128,7 @@ export default function MapPage() {
 
       setParticipantMessage(response || "Inscripción realizada correctamente.");
 
-      await refreshSelectedEvent(selectedEvent.id);
+      await refreshEventLists();
     } catch (err) {
       setParticipantError(
         err instanceof Error ? err.message : "No se pudo realizar la inscripción"
@@ -153,7 +156,7 @@ export default function MapPage() {
 
       setParticipantMessage(response || "Inscripción cancelada correctamente.");
 
-      await refreshSelectedEvent(selectedEvent.id);
+      await refreshEventLists();
     } catch (err) {
       setParticipantError(
         err instanceof Error ? err.message : "No se pudo cancelar la inscripción"
@@ -177,19 +180,6 @@ export default function MapPage() {
       }
 
       await queryClient.invalidateQueries({ queryKey: ["events"] });
-
-      const updatedEvents = await queryClient.fetchQuery({
-        queryKey: ["events", token],
-        queryFn: () => api.getEvents(),
-      });
-
-      const updatedSelected = updatedEvents.find(
-        (event) => event.id === selectedEvent.id
-      );
-
-      if (updatedSelected) {
-        setSelectedEvent(updatedSelected);
-      }
     } catch (err) {
       setReactionError(
         err instanceof Error ? err.message : "No se pudo reaccionar al evento"
@@ -318,30 +308,32 @@ export default function MapPage() {
               </p>
             )}
 
-            <p>
-              <strong>Dirección:</strong> {selectedEvent.address}
-            </p>
-            <p>
-              <strong>Descripción:</strong> {selectedEvent.description}
-            </p>
-            <p>
-              <strong>Inicio:</strong>{" "}
-              {new Date(selectedEvent.startDate).toLocaleString()}
-            </p>
-            <p>
-              <strong>Fin:</strong>{" "}
-              {new Date(selectedEvent.endDate).toLocaleString()}
-            </p>
-            <p>
-              <strong>Cupo:</strong> {selectedEvent.maxParticipants}
-            </p>
-            <p>
-              <strong>Precio:</strong> {selectedEvent.price ?? 0}
-            </p>
-            <p>
-              <strong>Creador:</strong>{" "}
-              {selectedEvent.createdByUserName || "Sin dato"}
-            </p>
+            <div className="space-y-2 rounded-2xl bg-slate-50 p-3">
+              <p>
+                <strong>Dirección:</strong> {selectedEvent.address}
+              </p>
+              <p>
+                <strong>Descripción:</strong> {selectedEvent.description}
+              </p>
+              <p>
+                <strong>Inicio:</strong>{" "}
+                {new Date(selectedEvent.startDate).toLocaleString()}
+              </p>
+              <p>
+                <strong>Fin:</strong>{" "}
+                {new Date(selectedEvent.endDate).toLocaleString()}
+              </p>
+              <p>
+                <strong>Cupo:</strong> {selectedEvent.maxParticipants}
+              </p>
+              <p>
+                <strong>Precio:</strong> {selectedEvent.price ?? 0}
+              </p>
+              <p>
+                <strong>Creador:</strong>{" "}
+                {selectedEvent.createdByUserName || "Sin dato"}
+              </p>
+            </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
               <p className="mb-3 text-sm font-semibold text-slate-900">
