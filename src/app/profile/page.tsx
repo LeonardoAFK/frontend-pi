@@ -333,26 +333,8 @@ export default function ProfilePage() {
                   <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
                     Correo
                   </p>
-                  <p className="mt-1 font-semibold text-slate-950">
+                  <p className="mt-1 break-words font-semibold text-slate-950">
                     {email || "Sin dato"}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Nombre
-                  </p>
-                  <p className="mt-1 font-semibold text-slate-950">
-                    {firstName || "Sin dato"}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Apellido
-                  </p>
-                  <p className="mt-1 font-semibold text-slate-950">
-                    {lastName || "Sin dato"}
                   </p>
                 </div>
               </div>
