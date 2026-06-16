@@ -14,6 +14,41 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+type JwtPayload = Record<string, unknown>;
+
+function decodeJwtPayload(token: string | null): JwtPayload | null {
+  if (!token) return null;
+
+  try {
+    const [, payload] = token.split(".");
+    if (!payload) return null;
+
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "="
+    );
+
+    return JSON.parse(atob(padded)) as JwtPayload;
+  } catch {
+    return null;
+  }
+}
+
+function getStringClaim(payload: JwtPayload | null, keys: string[]) {
+  if (!payload) return null;
+
+  for (const key of keys) {
+    const value = payload[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 export default function MapPage() {
   const [selectedEvent, setSelectedEvent] = useState<EventResponse | null>(null);
 
@@ -28,11 +63,42 @@ export default function MapPage() {
   const [filterMode, setFilterMode] = useState<MapFilterMode>("all");
   const [selectedCategory, setSelectedCategory] = useState<number | "">("");
 
+  const [registrationOverrides, setRegistrationOverrides] = useState<
+    Record<number, boolean>
+  >({});
+
   const queryClient = useQueryClient();
 
   useEffect(() => {
     setTokenState(getToken());
   }, []);
+
+  const currentUserPayload = useMemo(() => decodeJwtPayload(token), [token]);
+
+  const currentUserId = useMemo(
+    () =>
+      getStringClaim(currentUserPayload, [
+        "nameid",
+        "sub",
+        "userId",
+        "UserId",
+        "id",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+      ]),
+    [currentUserPayload]
+  );
+
+  const currentUserName = useMemo(
+    () =>
+      getStringClaim(currentUserPayload, [
+        "unique_name",
+        "name",
+        "userName",
+        "UserName",
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
+      ]),
+    [currentUserPayload]
+  );
 
   const {
     data: eventsData = [],
@@ -63,13 +129,52 @@ export default function MapPage() {
     [registeredEvents]
   );
 
+  const effectiveRegisteredEventIds = useMemo(() => {
+    const ids = new Set(registeredEventIds);
+
+    Object.entries(registrationOverrides).forEach(([eventId, isRegistered]) => {
+      const id = Number(eventId);
+
+      if (isRegistered) {
+        ids.add(id);
+      } else {
+        ids.delete(id);
+      }
+    });
+
+    return Array.from(ids);
+  }, [registeredEventIds, registrationOverrides]);
+
   const selectedEventIsRegistered = selectedEvent
-    ? registeredEventIds.includes(selectedEvent.id)
+    ? effectiveRegisteredEventIds.includes(selectedEvent.id)
     : false;
+
+  const selectedEventIsOwner = useMemo(() => {
+    if (!selectedEvent) return false;
+
+    const createdByUserId = selectedEvent.createdByUserId?.trim();
+    const createdByUserName = selectedEvent.createdByUserName?.trim();
+
+    if (currentUserId && createdByUserId && currentUserId === createdByUserId) {
+      return true;
+    }
+
+    if (
+      currentUserName &&
+      createdByUserName &&
+      currentUserName.toLowerCase() === createdByUserName.toLowerCase()
+    ) {
+      return true;
+    }
+
+    return false;
+  }, [selectedEvent, currentUserId, currentUserName]);
 
   const visibleEvents = useMemo(() => {
     if (filterMode === "registered") {
-      return events.filter((event) => registeredEventIds.includes(event.id));
+      return events.filter((event) =>
+        effectiveRegisteredEventIds.includes(event.id)
+      );
     }
 
     if (filterMode === "category" && selectedCategory !== "") {
@@ -77,7 +182,7 @@ export default function MapPage() {
     }
 
     return events;
-  }, [events, filterMode, registeredEventIds, selectedCategory]);
+  }, [events, filterMode, effectiveRegisteredEventIds, selectedCategory]);
 
   useEffect(() => {
     if (!selectedEvent) return;
@@ -109,15 +214,18 @@ export default function MapPage() {
     }
   }
 
-  async function refreshEventLists() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["events"] }),
-      queryClient.invalidateQueries({ queryKey: ["my-registered-events"] }),
-    ]);
+  function refreshEventListsInBackground() {
+    void queryClient.invalidateQueries({ queryKey: ["events"] });
+    void queryClient.invalidateQueries({ queryKey: ["my-registered-events"] });
   }
 
   async function handleRegisterToEvent() {
     if (!selectedEvent) return;
+
+    if (selectedEventIsOwner) {
+      setParticipantError("No puedes inscribirte a un evento que tú creaste.");
+      return;
+    }
 
     setParticipantError("");
     setParticipantMessage("");
@@ -126,9 +234,14 @@ export default function MapPage() {
     try {
       const response = await api.registerToEvent(selectedEvent.id);
 
+      setRegistrationOverrides((current) => ({
+        ...current,
+        [selectedEvent.id]: true,
+      }));
+
       setParticipantMessage(response || "Inscripción realizada correctamente.");
 
-      await refreshEventLists();
+      refreshEventListsInBackground();
     } catch (err) {
       setParticipantError(
         err instanceof Error ? err.message : "No se pudo realizar la inscripción"
@@ -154,9 +267,14 @@ export default function MapPage() {
     try {
       const response = await api.cancelRegistration(selectedEvent.id);
 
+      setRegistrationOverrides((current) => ({
+        ...current,
+        [selectedEvent.id]: false,
+      }));
+
       setParticipantMessage(response || "Inscripción cancelada correctamente.");
 
-      await refreshEventLists();
+      refreshEventListsInBackground();
     } catch (err) {
       setParticipantError(
         err instanceof Error ? err.message : "No se pudo cancelar la inscripción"
@@ -179,7 +297,7 @@ export default function MapPage() {
         await api.reactToEvent(selectedEvent.id, reactionType);
       }
 
-      await queryClient.invalidateQueries({ queryKey: ["events"] });
+      void queryClient.invalidateQueries({ queryKey: ["events"] });
     } catch (err) {
       setReactionError(
         err instanceof Error ? err.message : "No se pudo reaccionar al evento"
@@ -239,7 +357,7 @@ export default function MapPage() {
             setParticipantMessage("");
           }}
           selectedEventId={selectedEvent?.id}
-          registeredEventIds={registeredEventIds}
+          registeredEventIds={effectiveRegisteredEventIds}
         />
       </div>
 
@@ -340,7 +458,43 @@ export default function MapPage() {
                 Participación
               </p>
 
-              {selectedEventIsRegistered ? (
+              {selectedEventIsOwner ? (
+                <div className="space-y-2">
+                  <p className="rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700">
+                    Este evento fue creado por ti.
+                  </p>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      disabled
+                      className="rounded-xl bg-[#4668A9] px-4 py-2 text-sm font-semibold text-white opacity-80"
+                    >
+                      Modificar
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white opacity-80"
+                    >
+                      Ver inscritos
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 opacity-80"
+                  >
+                    Eliminar evento
+                  </button>
+
+                  <p className="text-xs text-slate-500">
+                    Estas acciones las conectamos en el siguiente paso.
+                  </p>
+                </div>
+              ) : selectedEventIsRegistered ? (
                 <button
                   type="button"
                   onClick={handleCancelRegistration}
