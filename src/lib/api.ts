@@ -141,7 +141,13 @@ export const api = {
   getMe: async () => {
     const token = getToken();
 
-    return apiFetch<{ message: string }>(routes.me, {
+    return apiFetch<{
+      firstName?: string | null;
+      lastName?: string | null;
+      userName?: string | null;
+      email?: string | null;
+      message?: string | null;
+    }>(routes.me, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,

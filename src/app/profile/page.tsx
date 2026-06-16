@@ -10,7 +10,14 @@ export default function ProfilePage() {
   useEffect(() => {
     api
       .getMe()
-      .then((data) => setMessage(data.message))
+      .then((data) => {
+        setMessage(
+          data.message ??
+            data.userName ??
+            data.email ??
+            "Usuario autenticado"
+        );
+      })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "No se pudo cargar");
       });
