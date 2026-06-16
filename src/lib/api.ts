@@ -147,6 +147,7 @@ export const api = {
       userName?: string | null;
       email?: string | null;
       message?: string | null;
+      profileImageUrl?: string | null;
     }>(routes.me, {
       method: "GET",
       headers: {
@@ -254,7 +255,21 @@ export const api = {
     );
   },
 
-  
+  changePassword: async (payload: {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+  }) => {
+    const token = getToken();
+
+    return apiFetch<string>(routes.changePassword, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+  },
 
 
     registerToEvent: async (eventId: number) => {
