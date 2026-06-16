@@ -18,6 +18,11 @@ export default function MapPage() {
   const [selectedEvent, setSelectedEvent] = useState<EventResponse | null>(null);
   const [reactionLoading, setReactionLoading] = useState(false);
   const [reactionError, setReactionError] = useState("");
+
+  const [participantLoading, setParticipantLoading] = useState(false);
+  const [participantError, setParticipantError] = useState("");
+  const [participantMessage, setParticipantMessage] = useState("");
+
   const [token, setTokenState] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<MapFilterMode>("all");
   const [selectedCategory, setSelectedCategory] = useState<number | "">("");
@@ -51,6 +56,10 @@ export default function MapPage() {
     [registeredEvents]
   );
 
+  const selectedEventIsRegistered = selectedEvent
+    ? registeredEventIds.includes(selectedEvent.id)
+    : false;
+
   const visibleEvents = useMemo(() => {
     if (filterMode === "registered") {
       return events.filter((event) => registeredEventIds.includes(event.id));
@@ -80,6 +89,77 @@ export default function MapPage() {
 
     if (mode !== "category") {
       setSelectedCategory("");
+    }
+  }
+
+  async function refreshSelectedEvent(eventId: number) {
+    await queryClient.invalidateQueries({ queryKey: ["events"] });
+    await queryClient.invalidateQueries({ queryKey: ["my-registered-events"] });
+
+    const updatedEvents = await queryClient.fetchQuery({
+      queryKey: ["events", token],
+      queryFn: () => api.getEvents(),
+    });
+
+    await queryClient.fetchQuery({
+      queryKey: ["my-registered-events", token],
+      queryFn: () => api.getMyRegisteredEvents(),
+    });
+
+    const updatedSelected = updatedEvents.find((event) => event.id === eventId);
+
+    if (updatedSelected) {
+      setSelectedEvent(updatedSelected);
+    }
+  }
+
+  async function handleRegisterToEvent() {
+    if (!selectedEvent) return;
+
+    setParticipantError("");
+    setParticipantMessage("");
+    setParticipantLoading(true);
+
+    try {
+      const response = await api.registerToEvent(selectedEvent.id);
+
+      setParticipantMessage(response || "Inscripción realizada correctamente.");
+
+      await refreshSelectedEvent(selectedEvent.id);
+    } catch (err) {
+      setParticipantError(
+        err instanceof Error ? err.message : "No se pudo realizar la inscripción"
+      );
+    } finally {
+      setParticipantLoading(false);
+    }
+  }
+
+  async function handleCancelRegistration() {
+    if (!selectedEvent) return;
+
+    const confirmed = window.confirm(
+      "¿Seguro que quieres cancelar tu inscripción a este evento?"
+    );
+
+    if (!confirmed) return;
+
+    setParticipantError("");
+    setParticipantMessage("");
+    setParticipantLoading(true);
+
+    try {
+      const response = await api.cancelRegistration(selectedEvent.id);
+
+      setParticipantMessage(response || "Inscripción cancelada correctamente.");
+
+      await refreshSelectedEvent(selectedEvent.id);
+    } catch (err) {
+      setParticipantError(
+        err instanceof Error ? err.message : "No se pudo cancelar la inscripción"
+      );
+    } finally {
+      setParticipantLoading(false);
     }
   }
 
@@ -162,7 +242,12 @@ export default function MapPage() {
 
         <EventMap
           events={token ? visibleEvents : []}
-          onSelect={setSelectedEvent}
+          onSelect={(event) => {
+            setSelectedEvent(event);
+            setReactionError("");
+            setParticipantError("");
+            setParticipantMessage("");
+          }}
           selectedEventId={selectedEvent?.id}
           registeredEventIds={registeredEventIds}
         />
@@ -257,6 +342,46 @@ export default function MapPage() {
               <strong>Creador:</strong>{" "}
               {selectedEvent.createdByUserName || "Sin dato"}
             </p>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="mb-3 text-sm font-semibold text-slate-900">
+                Participación
+              </p>
+
+              {selectedEventIsRegistered ? (
+                <button
+                  type="button"
+                  onClick={handleCancelRegistration}
+                  disabled={participantLoading}
+                  className="w-full rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {participantLoading
+                    ? "Procesando..."
+                    : "Cancelar inscripción"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleRegisterToEvent}
+                  disabled={participantLoading}
+                  className="w-full rounded-xl bg-[#4668A9] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#38578F] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {participantLoading ? "Procesando..." : "Inscribirme"}
+                </button>
+              )}
+
+              {participantMessage && (
+                <p className="mt-2 text-sm font-medium text-emerald-700">
+                  {participantMessage}
+                </p>
+              )}
+
+              {participantError && (
+                <p className="mt-2 text-sm font-medium text-red-600">
+                  {participantError}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </aside>
